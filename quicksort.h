@@ -1,39 +1,67 @@
 #include <algorithm>
 #include <functional>
+#include <ctime>
+#include <iostream>
+#include <random>
 
 #include <parlay/parallel.h>
 #include <parlay/primitives.h>
 #include <parlay/sequence.h>
 
-// **************************************************************
-// Parallel Quicksort
-// **************************************************************
-template <typename Range, typename Less>
-void qsort(Range in, Range out, Less less) {
-    long n = in.size();
-    if (n < 10000) {
-        parlay::copy(in, out);
-        std::sort(out.begin(), out.end(), less);
-    } else {
-        auto pivot = parlay::sort(parlay::tabulate(101, [&] (long i) {
-            return in[i*n/101];}))[50];
-        auto [x, offsets] = parlay::counting_sort(in, 3, [&] (auto k) {
-            return less(k, pivot) ? 0u : less(pivot, k) ? 2u : 1u;});
-        auto& split = x;
-        long nl = offsets[1];
-        long nm = offsets[2];
-        parlay::copy(split.cut(nl,nm), out.cut(nl,nm));
-        parlay::par_do(
-                [&] { qsort(split.cut(0,nl), out.cut(0,nl), less);},
-                [&] { qsort(split.cut(nm,n), in.cut(nm,n), less);});
+std::mt19937 rand_gen(4);
+int batch_size = 100000;
+
+template<typename It>
+void qsort_seq(It a, It b) {
+    if (b - a <= 1) {
+        return;
     }
+
+    auto main_element = *(a + rand_gen() % (b - a));
+    auto left = a;
+    auto right = b - 1;
+
+    while (left <= right) {
+        while (*left < main_element) ++left;
+        while (*right > main_element) --right;
+        if (left <= right) {
+            std::iter_swap(left++, right--);
+        }
+    }
+
+    qsort_seq(a, right + 1);
+    qsort_seq(left, b);
 }
 
-template <typename Range, typename Less = std::less<>>
-auto quicksort(Range& in, Less less = {}) {
-    long n = in.size();
-    using T = typename Range::value_type;
-    parlay::sequence<T> out(n);
-    qsort(in.cut(0,n), out.cut(0,n), less);
-    return out;
+void quicksort_seq(std::vector<long> &vec) {
+    qsort_seq(vec.begin(), vec.end());
+}
+
+template<typename It>
+void qsort_par_line(It a, It b) {
+    if (b - a < batch_size) {
+        qsort_seq(a, b);
+        return;
+    }
+
+    auto main_element = *(a + rand_gen() % (b - a));
+    auto left = a;
+    auto right = b - 1;
+
+    while (left <= right) {
+        while (*left < main_element) ++left;
+        while (*right > main_element) --right;
+        if (left <= right) {
+            std::iter_swap(left++, right--);
+        }
+    }
+
+    parlay::par_do(
+            [&] { qsort_par_line(a, right + 1); },
+            [&] { qsort_par_line(left, b); }
+    );
+}
+
+auto quicksort_line(std::vector<long> &vec) {
+    qsort_par_line(vec.begin(), vec.end());
 }

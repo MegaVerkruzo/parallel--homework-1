@@ -4,7 +4,7 @@ project(parallel__homework_1)
 set(CMAKE_CXX_STANDARD 17)
 
 add_executable(parallel__homework_1 main.cpp
-        quicksort.h)
+)
 
 include(FetchContent)
 FetchContent_Declare(parlaylib
